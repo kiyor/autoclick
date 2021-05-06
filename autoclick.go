@@ -15,6 +15,12 @@ import (
 	"time"
 )
 
+type Point struct {
+	X     int
+	Y     int
+	Color string
+}
+
 type Agent struct {
 	mu         *sync.Mutex
 	screenshot *string
@@ -76,20 +82,20 @@ func (a *Agent) Close() {
 	}
 }
 
-func (a *Agent) IsColor(x, y int, color string) bool {
-	co := a.GetColor(x, y)
-	if co == color {
-		a.Log.Printf("X=%d && Y=%d && COLOR=%s\n", x, y, color)
+func (a *Agent) IsColor(p *Point) bool {
+	co := a.GetColor(p)
+	if co == p.Color {
+		a.Log.Printf("X=%d && Y=%d && COLOR=%s\n", p.X, p.Y, p.Color)
 		return true
 	}
-	a.Log.Printf("X=%d && Y=%d && COLOR=%s != %s\n", x, y, co, color)
+	a.Log.Printf("X=%d && Y=%d && COLOR=%s != DEFINED(%s)\n", p.X, p.Y, co, p.Color)
 	return false
 }
 
-func (a *Agent) GetColor(x, y int) string {
+func (a *Agent) GetColor(p *Point) string {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	cmd := fmt.Sprintf("convert %s -depth 8 -crop 1x1+%d+%d txt:- | grep -om1 '#\\w\\+'", *a.screenshot, x, y)
+	cmd := fmt.Sprintf("convert %s -depth 8 -crop 1x1+%d+%d txt:- | grep -om1 '#\\w\\+'", *a.screenshot, p.X, p.Y)
 	c := exec.Command("/bin/sh", "-c", cmd)
 	var b bytes.Buffer
 	c.Stdout = &b
@@ -120,9 +126,9 @@ func (a *Agent) GetMouse() (int, int) {
 	return x, y
 }
 
-func (a *Agent) MoveMouse(x, y int) {
-	a.Log.Printf("move X=%d Y=%d\n", x, y)
-	cmd := fmt.Sprintf("xdotool mousemove %d %d", x, y)
+func (a *Agent) MoveMouse(p *Point) {
+	a.Log.Printf("move X=%d Y=%d\n", p.X, p.Y)
+	cmd := fmt.Sprintf("xdotool mousemove %d %d", p.X, p.Y)
 	c := exec.Command("/bin/sh", "-c", cmd)
 	c.Env = []string{
 		"DISPLAY=:0.0",
@@ -132,10 +138,10 @@ func (a *Agent) MoveMouse(x, y int) {
 	c.Run()
 }
 
-func (a *Agent) MoveAndClick(x, y int) {
+func (a *Agent) MoveAndClick(p *Point) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	a.MoveMouse(x, y)
+	a.MoveMouse(p)
 	time.Sleep(10 * time.Millisecond)
 	cmd := fmt.Sprintf("xdotool click 1")
 	c := exec.Command("/bin/sh", "-c", cmd)
