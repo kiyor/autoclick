@@ -13,12 +13,63 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/aybabtme/rgbterm"
 )
 
 type Point struct {
+	Name  string
 	X     int
 	Y     int
-	Color string
+	Color Hex
+}
+
+type RGB struct {
+	Red   uint8
+	Green uint8
+	Blue  uint8
+}
+
+type Hex string
+
+func (h Hex) RGB() (RGB, error) {
+	hex := strings.Replace(string(h), "#", "", -1)
+	var rgb RGB
+	values, err := strconv.ParseUint(string(hex), 16, 32)
+
+	if err != nil {
+		return RGB{}, err
+	}
+
+	rgb = RGB{
+		Red:   uint8(values >> 16),
+		Green: uint8((values >> 8) & 0xFF),
+		Blue:  uint8(values & 0xFF),
+	}
+
+	return rgb, nil
+}
+
+func NewPoint(x, y int, color string, name ...string) *Point {
+	var n string
+	if len(name) > 0 {
+		n = name[0]
+	}
+	return &Point{
+		Name:  n,
+		X:     x,
+		Y:     y,
+		Color: Hex(color),
+	}
+}
+
+func (p *Point) String() string {
+	rgb, _ := p.Color.RGB()
+	c := rgbterm.FgString(string(p.Color), rgb.Red, rgb.Green, rgb.Blue)
+	if len(p.Name) > 0 {
+		return fmt.Sprintf("%s X:%d Y:%d %s", p.Name, p.X, p.Y, c)
+	}
+	return fmt.Sprintf("X:%d Y:%d %s", p.X, p.Y, c)
 }
 
 type Agent struct {
@@ -85,14 +136,16 @@ func (a *Agent) Close() {
 func (a *Agent) IsColor(p *Point) bool {
 	co := a.GetColor(p)
 	if co == p.Color {
-		a.Log.Printf("X=%d && Y=%d && COLOR=%s\n", p.X, p.Y, p.Color)
+		a.Log.Printf(p.String())
 		return true
 	}
-	a.Log.Printf("X=%d && Y=%d && COLOR=%s != DEFINED(%s)\n", p.X, p.Y, co, p.Color)
+	rgb, _ := co.RGB()
+	c := rgbterm.FgString(string(co), rgb.Red, rgb.Green, rgb.Blue)
+	a.Log.Printf("%s != %s\n", p.String(), c)
 	return false
 }
 
-func (a *Agent) GetColor(p *Point) string {
+func (a *Agent) GetColor(p *Point) Hex {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	cmd := fmt.Sprintf("convert %s -depth 8 -crop 1x1+%d+%d txt:- | grep -om1 '#\\w\\+'", *a.screenshot, p.X, p.Y)
@@ -101,7 +154,7 @@ func (a *Agent) GetColor(p *Point) string {
 	c.Stdout = &b
 	c.Stderr = os.Stderr
 	c.Run()
-	return strings.Trim(b.String(), "\n")
+	return Hex(strings.Trim(b.String(), "\n"))
 }
 
 func (a *Agent) GetMouse() (int, int) {
@@ -127,7 +180,7 @@ func (a *Agent) GetMouse() (int, int) {
 }
 
 func (a *Agent) MoveMouse(p *Point) {
-	a.Log.Printf("move X=%d Y=%d\n", p.X, p.Y)
+	a.Log.Printf("move to %s X:%d Y:%d\n", p.Name, p.X, p.Y)
 	cmd := fmt.Sprintf("xdotool mousemove %d %d", p.X, p.Y)
 	c := exec.Command("/bin/sh", "-c", cmd)
 	c.Env = []string{
